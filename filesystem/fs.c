@@ -28,6 +28,7 @@ void SetInodeBytemap(int inodeno)
 	content[inodeno]=1;
 	DevWriteBlock(INODE_BYTEMAP_BLOCK_NUM,content);
 
+	
 
 }
 
@@ -51,20 +52,20 @@ void ResetInodeBytemap(int inodeno)
 void SetBlockBytemap(int blkno)
 {
 	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-	DevReadBlock(INODE_BYTEMAP_BLOCK_NUM,content);
+	DevReadBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
 
 	content[blkno]=1;
 
-	DevWriteBlock(INODE_BYTEMAP_BLOCK_NUM,content);
+	DevWriteBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
 }
 
 
 void ResetBlockBytemap(int blkno)
 {
 	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-	DevReadBlock(INODE_BYTEMAP_BLOCK_NUM,content);
+	DevReadBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
 	content[blkno]=0;
-	DevWriteBlock(INODE_BYTEMAP_BLOCK_NUM,content);
+	DevWriteBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
 }
 
 
@@ -182,13 +183,33 @@ void GetInode(int inodeno, Inode* pInode)
 
 int GetFreeInodeNum(void)
 {
+	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
 
-}
+    DevReadBlock(INODE_BYTEMAP_BLOCK_NUM,content);
+
+    for(int i=0;i<16;i++){
+        if(content[i]==0){
+            return i;
+        }
+    }
+
+    return -1;
+}	
 
 
 int GetFreeBlockNum(void)
 {
+	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
 
+    DevReadBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
+
+    for(int i=0;i<16;i++){
+        if(content[i]==0){
+            return i;
+        }
+    }
+
+    return -1;
 }
 
 void PutIndirectBlockEntry(int blkno, int index, int number)
