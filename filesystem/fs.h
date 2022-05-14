@@ -8,7 +8,7 @@
 #define FS_DISK_CAPACITY		(BLOCK_SIZE*512) 	
 
 
-#define NUM_OF_DIRECT_BLOCK_PTR	(5)	/* direct block pointer의 개수 */
+#define NUM_OF_DIRECT_BLOCK_PTR	(4)	/* direct block pointer의 개수 */
 #define MAX_NAME_LEN     	(28)
 
 
@@ -24,14 +24,14 @@
 
 //총 32바이트임
 //블록내 앤트리(총128개)에 저장되는 정보임
-//블록당 16개씩 저장..?
+//블록당 16개씩 저장
 typedef struct  __dirEntry {
      char name[MAX_NAME_LEN];        // file name
      int inodeNum; 
 } DirEntry;
 
-//4+4+4+4+4=20바이트???
-//32바이트인데 나중에
+
+//32바이트
 typedef struct _Inode {
 	int 	allocBlocks;//몇번블록?	블록당 16개 잇으니깐
 	//
@@ -45,6 +45,8 @@ typedef struct _Inode {
 	int		indirectBlockPtr;				// indirect block pointer
 } Inode;
 
+
+void FileSySInit();
 //inode bytemap에서 inodeno 번째 바이트를
 //1로 설정하고 다시 가상디스크(파일)에 저장한다.
 void SetInodeBytemap(int inodeno);
