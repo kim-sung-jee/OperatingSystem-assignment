@@ -214,20 +214,57 @@ int GetFreeBlockNum(void)
 
 void PutIndirectBlockEntry(int blkno, int index, int number)
 {
+    char*block=(char*)malloc(sizeof(char)*BLOCK_SIZE);
 
+    DevReadBlock(blkno,block);
+
+    int tmp=number;
+
+    memcpy(block+(index)*4,&tmp,sizeof(int));
+
+    DevWriteBlock(blkno,block);
 }
 
 int GetIndirectBlockEntry(int blkno, int index)
 {
+    char*block=(char*)malloc(sizeof(char)*BLOCK_SIZE);
 
+    DevReadBlock(blkno,block);
+
+    int tmp;
+    memcpy(&tmp,block+(index)*4,sizeof(int));
+
+    return tmp;
 }
 
 void PutDirEntry(int blkno, int index, DirEntry* pEntry)
 {
+    char*block=(char*)malloc(sizeof(char)*BLOCK_SIZE);
 
+    DevReadBlock(blkno,block);
+
+    // index 0 번은 0~31
+    // index 1 번은 32~63
+    // index 2 번은 64~95
+    //..
+    // index 15번은  480~511
+
+    
+    memcpy(block+(index)*32,pEntry,sizeof(char)*MAX_NAME_LEN);
+    memcpy(block+(index)*32+MAX_NAME_LEN,&(pEntry->inodeNum),sizeof(int));
+
+    DevWriteBlock(blkno,block);
+
+    
 }
 
 void GetDirEntry(int blkno, int index, DirEntry* pEntry)
 {
+    char*block=(char*)malloc(sizeof(char)*BLOCK_SIZE);
 
+    DevReadBlock(blkno,block);
+
+    memcpy(pEntry,block+(index)*32,sizeof(char)*MAX_NAME_LEN);
+
+    memcpy(&(pEntry->inodeNum),block+(index)*32+MAX_NAME_LEN,sizeof(int));
 }
