@@ -258,13 +258,34 @@ void PutDirEntry(int blkno, int index, DirEntry* pEntry)
     
 }
 
-void GetDirEntry(int blkno, int index, DirEntry* pEntry)
+int GetDirEntry(int blkno, int index, DirEntry* pEntry)
 {
     char*block=(char*)malloc(sizeof(char)*BLOCK_SIZE);
 
     DevReadBlock(blkno,block);
+    int flag;
+    memcpy(&flag,block+index*32,sizeof(pEntry));
+    if(flag==INVALID_ENTRY){
+        return -1;
+    }
 
     memcpy(pEntry,block+(index)*32,sizeof(char)*MAX_NAME_LEN);
 
     memcpy(&(pEntry->inodeNum),block+(index)*32+MAX_NAME_LEN,sizeof(int));
+  
+    return 1;
+
+}
+
+void RemoveIndirectBlockEntry(int blkno,int index){
+    PutIndirectBlockEntry(blkno,index,INVALID_ENTRY);
+}
+
+void RemoveDirEntry(int blkno, int index){
+
+    struct __dirEntry *ent=malloc(32);
+    GetDirEntry(blkno,index,ent);
+    ent->inodeNum=INVALID_ENTRY;
+    PutDirEntry(blkno,index,ent);
+
 }
