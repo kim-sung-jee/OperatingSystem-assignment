@@ -1,291 +1,63 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include<string.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <assert.h>
+#include <unistd.h>
 #include "disk.h"
-#include "fs.h"
 
-void FileSysInit(void){
-	DevCreateDisk();
-	char * a = (char*)malloc(sizeof(char)*BLOCK_SIZE);
+int fd; 
 
-	memset(a,0,BLOCK_SIZE);
-	
-
-	for(int i=0;i<512;i++){
-		DevWriteBlock(i,a);
-	}
-	
+//가상디스크 생성함.. 파일로 생성된다.
+//Inode 는 32bytes 
+//Block 하나당 512bytes 이다
+//Block 당 inode 개수는 16개 Block 개수(InodeList담는) 4개
+// 즉 64개의 파일을 관리할 수 있게 된다.
+// 가상디스크의 전체 크기는? 512*512 개다
+//521 빼기 1 은 520 빼기 2 는 518 빼기4는 514개
+//514개가 block region인데
+//
+void DevCreateDisk(void)
+{   
+    // 파일을 읽기,쓰기 전용으로 연다.
+    // 파일이 없으면 생성한다.
+    // 파일이 이미 존재하면 기존 파일의 내용을 무시하면서 연다.
+    // 권한은 0644 
+    //사이즈는...?
+    fd = open("MY_DISK", O_RDWR | O_CREAT | O_TRUNC, 0644);
 }
 
-
-void SetInodeBytemap(int inodeno)
+// my_disk 파일 열어서  파일 디스크립터 획득
+void DevOpenDisk(void)
 {
-	char* content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-	DevReadBlock(INODE_BYTEMAP_BLOCK_NUM,content);
-
-
-
-	content[inodeno]=1;
-	DevWriteBlock(INODE_BYTEMAP_BLOCK_NUM,content);
-
-	
-
+	fd = open("MY_DISK", O_RDWR);
 }
-
-
-void ResetInodeBytemap(int inodeno)
+//fd를 움직여 블록 움직이게한다?.
+// SEEK_SET 은 파일의 시작 위치를 기준으로함
+void __DevMoveBlock(int blkno){
+    // 블럭 단위로 움직인다.
+    lseek(fd, (off_t)+(BLOCK_SIZE*blkno),SEEK_SET);
+}
+// char은 1바이트 이니깐..
+// char* 는 4바이트 혹은 8바이트 아마 8바이트일것 8바이트 맞음
+// pBuf가 가리키는 거는 512 바이트 의 공간
+//
+void DevReadBlock(int blkno, char* pBuf)
 {
-	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-	DevReadBlock(INODE_BYTEMAP_BLOCK_NUM,content);
-	
-	
-
-
-
-	content[inodeno]=0;
-	
-
-	DevWriteBlock(INODE_BYTEMAP_BLOCK_NUM,content);
+   __DevMoveBlock(blkno);
+   read(fd, pBuf, BLOCK_SIZE);
 }
 
-
-void SetBlockBytemap(int blkno)
+void DevWriteBlock(int blkno, char* pBuf)
 {
-	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-	DevReadBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
-
-	content[blkno]=1;
-
-	DevWriteBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
+   __DevMoveBlock(blkno);
+   write(fd, pBuf, BLOCK_SIZE);
 }
 
 
-void ResetBlockBytemap(int blkno)
+void DevCloseDisk(void)
 {
-	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-	DevReadBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
-	content[blkno]=0;
-	DevWriteBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
-}
-
-
-void PutInode(int inodeno, Inode* pInode)
-{	
-	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-
-	// find block
-	if(0<=inodeno&&inodeno<=15){
-        DevReadBlock(INODELIST_BLOCK_FIRST,content);
-		
-    }else if(16<=inodeno&&inodeno<=31){
-        DevReadBlock(INODELIST_BLOCK_FIRST+1,content);
-    }else if(32<=inodeno&&inodeno<=47){
-        DevReadBlock(INODELIST_BLOCK_FIRST+2,content);
-    }else if(48<=inodeno&&inodeno<=63){
-        DevReadBlock(INODELIST_BLOCK_FIRST+3,content);
-    }
-
-	// variable
-	int allocBlocks=pInode->allocBlocks;
-    int size=pInode->size;
-    int type=pInode->type;
-    int dirBlockPtr1=pInode->dirBlockPtr[0];
-    int dirBlockPtr2=pInode->dirBlockPtr[1];
-    int dirBlockPtr3=pInode->dirBlockPtr[2];
-    int dirBlockPtr4=pInode->dirBlockPtr[3];
-    int indirectBlockPtr=pInode->indirectBlockPtr;
-
-	int idx=(inodeno%16)*8;
-	
-
-	memcpy(content+(idx)*4,&allocBlocks,sizeof(int));
-    memcpy(content+(idx+1)*4,&size,sizeof(int));
-    memcpy(content+(idx+2)*4,&type,sizeof(int));
-    memcpy(content+(idx+3)*4,&dirBlockPtr1,sizeof(int));
-    memcpy(content+(idx+4)*4,&dirBlockPtr2,sizeof(int));
-    memcpy(content+(idx+5)*4,&dirBlockPtr3,sizeof(int));
-    memcpy(content+(idx+6)*4,&dirBlockPtr4,sizeof(int));
-    memcpy(content+(idx+7)*4,&indirectBlockPtr,sizeof(int));
-	
-
-	if(0<=inodeno&&inodeno<=15){
-		DevWriteBlock(INODELIST_BLOCK_FIRST,content);
-    }else if(16<=inodeno&&inodeno<=31){
-        DevWriteBlock(INODELIST_BLOCK_FIRST+1,content);
-    }else if(32<=inodeno&&inodeno<=47){
-        DevWriteBlock(INODELIST_BLOCK_FIRST+2,content);
-    }else if(48<=inodeno&&inodeno<=63){
-        DevWriteBlock(INODELIST_BLOCK_FIRST+3,content);
-    }
-
-	
-
-	
-
-
-}
-
-
-void GetInode(int inodeno, Inode* pInode)
-{
-	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-
-	if(0<=inodeno&&inodeno<=15){
-        DevReadBlock(INODELIST_BLOCK_FIRST,content);
-    }else if(16<=inodeno&&inodeno<=31){
-        DevReadBlock(INODELIST_BLOCK_FIRST+1,content);
-    }else if(32<=inodeno&&inodeno<=47){
-        DevReadBlock(INODELIST_BLOCK_FIRST+2,content);
-    }else if(48<=inodeno&&inodeno<=63){
-        DevReadBlock(INODELIST_BLOCK_FIRST+3,content);
-    }
-	// variable
-	int allocBlocks;
-    int size;
-    int type;
-    int dirBlockPtr1;
-    int dirBlockPtr2;
-    int dirBlockPtr3;
-    int dirBlockPtr4;
-    int indirectBlockPtr;
-
-	int idx=(inodeno%16)*8;
-	
-	
-
-	memcpy(&allocBlocks,content+(idx)*4,sizeof(int));
-    memcpy(&size,content+(idx+1)*4,sizeof(int));
-    memcpy(&type,content+(idx+2)*4,sizeof(int));
-    memcpy(&dirBlockPtr1,content+(idx+3)*4,sizeof(int));
-    memcpy(&dirBlockPtr2,content+(idx+4)*4,sizeof(int));
-    memcpy(&dirBlockPtr3,content+(idx+5)*4,sizeof(int));
-    memcpy(&dirBlockPtr4,content+(idx+6)*4,sizeof(int));
-    memcpy(&indirectBlockPtr,content+(idx+7)*4,sizeof(int));
-
-	
-	
-
-    pInode->allocBlocks=allocBlocks;
-    pInode->size=size;
-    pInode->type=type;
-    pInode->indirectBlockPtr=indirectBlockPtr;
-	
-
-	pInode->dirBlockPtr[0]=dirBlockPtr1;
-    pInode->dirBlockPtr[1]=dirBlockPtr2;
-    pInode->dirBlockPtr[2]=dirBlockPtr3;
-    pInode->dirBlockPtr[3]=dirBlockPtr4;
-
-
-
-}
-
-
-int GetFreeInodeNum(void)
-{
-	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-
-    DevReadBlock(INODE_BYTEMAP_BLOCK_NUM,content);
-
-    for(int i=0;i<16;i++){
-        if(content[i]==0){
-            return i;
-        }
-    }
-
-    return -1;
-}	
-
-
-int GetFreeBlockNum(void)
-{
-	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-
-    DevReadBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
-
-    for(int i=0;i<16;i++){
-        if(content[i]==0){
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-void PutIndirectBlockEntry(int blkno, int index, int number)
-{
-    char*block=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-
-    DevReadBlock(blkno,block);
-
-    int tmp=number;
-
-    memcpy(block+(index)*4,&tmp,sizeof(int));
-
-    DevWriteBlock(blkno,block);
-}
-
-int GetIndirectBlockEntry(int blkno, int index)
-{
-    char*block=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-
-    DevReadBlock(blkno,block);
-
-    int tmp;
-    memcpy(&tmp,block+(index)*4,sizeof(int));
-
-    return tmp;
-}
-
-void PutDirEntry(int blkno, int index, DirEntry* pEntry)
-{
-    char*block=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-
-    DevReadBlock(blkno,block);
-
-    // index 0 번은 0~31
-    // index 1 번은 32~63
-    // index 2 번은 64~95
-    //..
-    // index 15번은  480~511
-
-    
-    memcpy(block+(index)*32,pEntry,sizeof(char)*MAX_NAME_LEN);
-    memcpy(block+(index)*32+MAX_NAME_LEN,&(pEntry->inodeNum),sizeof(int));
-
-    DevWriteBlock(blkno,block);
-
-    
-}
-
-int GetDirEntry(int blkno, int index, DirEntry* pEntry)
-{
-    char*block=(char*)malloc(sizeof(char)*BLOCK_SIZE);
-
-    DevReadBlock(blkno,block);
-    int flag;
-    memcpy(&flag,block+index*32,sizeof(pEntry));
-    if(flag==INVALID_ENTRY){
-        return -1;
-    }
-
-    memcpy(pEntry,block+(index)*32,sizeof(char)*MAX_NAME_LEN);
-
-    memcpy(&(pEntry->inodeNum),block+(index)*32+MAX_NAME_LEN,sizeof(int));
-  
-    return 1;
-
-}
-
-void RemoveIndirectBlockEntry(int blkno,int index){
-    PutIndirectBlockEntry(blkno,index,INVALID_ENTRY);
-}
-
-void RemoveDirEntry(int blkno, int index){
-
-    struct __dirEntry *ent=malloc(32);
-    GetDirEntry(blkno,index,ent);
-    ent->inodeNum=INVALID_ENTRY;
-    PutDirEntry(blkno,index,ent);
-
+    close(fd);
 }
