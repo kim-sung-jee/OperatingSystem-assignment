@@ -264,11 +264,12 @@ int GetDirEntry(int blkno, int index, DirEntry* pEntry)
 
     DevReadBlock(blkno,block);
     int flag;
-    memcpy(&flag,block+index*32,sizeof(pEntry));
+    printf("asadg");
+    memcpy(&flag,block+index*32+MAX_NAME_LEN,sizeof(int));
     if(flag==INVALID_ENTRY){
         return -1;
     }
-
+    printf("hahah");
     memcpy(pEntry,block+(index)*32,sizeof(char)*MAX_NAME_LEN);
 
     memcpy(&(pEntry->inodeNum),block+(index)*32+MAX_NAME_LEN,sizeof(int));
