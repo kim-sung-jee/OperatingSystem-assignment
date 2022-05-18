@@ -8,18 +8,27 @@ int main(){
 	FileSysInit();
 
 	struct __dirEntry * direntry=malloc(32);
-	// char b[MAX_NAME_LEN]="asdgasdasg";
-	// direntry->name=b;
+	//char b[MAX_NAME_LEN]="asdgasdasg";
+	//direntry->name=b;
 	strcpy(direntry->name,"akakakakak");
 	direntry->inodeNum=14;
 
 	PutDirEntry(131,3,direntry);
 
 	struct __dirEntry * direntry2=malloc(32);
-	GetDirEntry(131,3,direntry2);
+	int a=GetDirEntry(131,3,direntry2);
+       	printf("\n");
+	printf("%d",a);	
+	
+	RemoveDirEntry(131,3);
+	printf("---------\n");
+	struct __dirEntry * direntry3=malloc(32);
+	printf("%d",GetDirEntry(131,3,direntry3));
 
-	printf("%d",direntry2->inodeNum);
+	
 
+
+//	printf("%d",direntry2->inodeNum);
 
 
 	// PutIndirectBlockEntry(100,5,129);
