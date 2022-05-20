@@ -37,14 +37,7 @@ void ResetInodeBytemap(int inodeno)
 {
 	char*content=(char*)malloc(sizeof(char)*BLOCK_SIZE);
 	DevReadBlock(INODE_BYTEMAP_BLOCK_NUM,content);
-	
-	
-
-
-
 	content[inodeno]=0;
-	
-
 	DevWriteBlock(INODE_BYTEMAP_BLOCK_NUM,content);
 }
 
@@ -187,7 +180,7 @@ int GetFreeInodeNum(void)
 
     DevReadBlock(INODE_BYTEMAP_BLOCK_NUM,content);
 
-    for(int i=0;i<16;i++){
+    for(int i=0;i<512;i++){
         if(content[i]==0){
             return i;
         }
@@ -203,7 +196,7 @@ int GetFreeBlockNum(void)
 
     DevReadBlock(BLOCK_BYTEMAP_BLOCK_NUM,content);
 
-    for(int i=0;i<16;i++){
+    for(int i=0;i<512;i++){
         if(content[i]==0){
             return i;
         }
@@ -250,11 +243,16 @@ void PutDirEntry(int blkno, int index, DirEntry* pEntry)
     // index 15번은  480~511
 
     
+    
     memcpy(block+(index)*32,pEntry,sizeof(char)*MAX_NAME_LEN);
     memcpy(block+(index)*32+MAX_NAME_LEN,&(pEntry->inodeNum),sizeof(int));
 
     DevWriteBlock(blkno,block);
 
+    struct __dirEntry * direntry=malloc(32);
+    GetDirEntry(blkno,index,direntry);
+
+    
     
 }
 
@@ -264,16 +262,17 @@ int GetDirEntry(int blkno, int index, DirEntry* pEntry)
 
     DevReadBlock(blkno,block);
     int flag;
-    printf("asadg");
+    
     memcpy(&flag,block+index*32+MAX_NAME_LEN,sizeof(int));
-    if(flag==INVALID_ENTRY){
-        return -1;
-    }
-    printf("hahah");
+    
+
     memcpy(pEntry,block+(index)*32,sizeof(char)*MAX_NAME_LEN);
 
     memcpy(&(pEntry->inodeNum),block+(index)*32+MAX_NAME_LEN,sizeof(int));
-  
+    
+    if(flag==INVALID_ENTRY){
+        return -1;
+    }
     return 1;
 
 }
@@ -283,7 +282,7 @@ void RemoveIndirectBlockEntry(int blkno,int index){
 }
 
 void RemoveDirEntry(int blkno, int index){
-
+    
     struct __dirEntry *ent=malloc(32);
     GetDirEntry(blkno,index,ent);
     ent->inodeNum=INVALID_ENTRY;
