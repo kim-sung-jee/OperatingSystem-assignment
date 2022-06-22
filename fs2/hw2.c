@@ -8,6 +8,59 @@
 FileDescTable* pFileDescTable;
 //FileSysInfo* pFileSysInfo;
 FileTable* pFileTable;
+int setDescTable(int freeInodeno){
+    //printf("inode 넘버입니다 : %d\n",freeInodeno);
+    if(pFileDescTable==NULL){
+        pFileDescTable=malloc(sizeof(FileDescTable));
+    }
+    if(pFileTable==NULL){
+        pFileTable=malloc(sizeof(FileTable));
+    }
+    for(int j=0;j<DESC_ENTRY_NUM;j++){
+                
+        DescEntry dentry=pFileDescTable->pEntry[j];
+        if(dentry.bUsed==0){
+            //printf("j값 입니ㅣ다%d\n",j);
+            dentry.bUsed=1;
+            File*  file=malloc(sizeof(File));
+            // 파일 객체
+            file->bUsed=1;
+            file->fileOffset=0;
+            file->inodeNum=freeInodeno;
+            // 디스크립터 테이블
+            pFileDescTable->pEntry[j].bUsed=1;
+            pFileDescTable->numUsedDescEntry+=1;
+            // 디스크립터 테이블의 해당 인덱스의 fileTableindex 설정
+            int index;
+            for(int z=0;z<MAX_FILE_NUM;j++){
+                if(pFileTable->pFile[z].bUsed==0){
+                    //printf("z 값입니다%d\n",z);
+                    
+                    // 파일 테이블
+                    pFileTable->numUsedFile+=1;
+                    
+                    pFileTable->pFile[z].bUsed=0;
+                    pFileTable->pFile[z].fileOffset=0;
+                    pFileTable->pFile[z].inodeNum=freeInodeno;
+                    
+                    
+                    
+                    dentry.fileTableIndex=z;
+                    index=j;
+                    break;
+                }
+            }
+            
+            pFileDescTable->pEntry[j].fileTableIndex=index;
+                
+
+                return j;
+            }else{
+                continue;
+            }
+        }
+    
+}
 
 int OpenFile(const char* name, OpenFlag flag)
 {   
@@ -40,11 +93,12 @@ int OpenFile(const char* name, OpenFlag flag)
             strcat(s2,s1);
         }
         //
-
+        
         Directory * a=OpenDirectory(s2);
         // 생성할  파일 이름
         char filename[100];
         strcpy(filename,names[i-1]);
+        //printf("파일이름입니다 : %s\n",filename);
         //printf("%s 이름이다\n",filename);
         // 그냥 diretry 블럭에 쓰기만하면댐
         Inode*inode=malloc(sizeof(Inode));
@@ -106,12 +160,10 @@ int OpenFile(const char* name, OpenFlag flag)
             int flag=0;
             for(int t=0;t<8;t++){
                 if(strcmp(drn3[t]->name,filename)==0){
-                    flag=1;
-                    break;
+                    // 파일 디스크립터 반환하기
+                    return setDescTable(drn3[t]->inodeNum);
                 }
-                if(flag==1){
-                    break;
-                }
+                
 
                 if(strcmp(drn3[t]->name,"")==0){
                     
@@ -144,7 +196,7 @@ int OpenFile(const char* name, OpenFlag flag)
                     DevReadBlock(0,newBlock);
 
                     // file descriptor table 과 file object 설정하기
-                    return 1;       
+                    return setDescTable(freeInodeno);
                 }
             }
             
@@ -181,6 +233,7 @@ int WriteFile(int fileDesc, char* pBuffer, int length)
     // inode 설정하기
     Inode*inode=malloc(sizeof(Inode));
     GetInode(inodeno,inode);
+    //printf("어디가문젤까\n");
     //direct 부터 4개밖ㅇ ㅔ못쓴다.
     for(int i=0;i<4;i++){
         int ptr=inode->dirBlockPtr[i];
@@ -281,16 +334,13 @@ int ReadFile(int fileDesc, char* pBuffer, int length)
 int CloseFile(int fileDesc)
 {
     // 해당 파일 디스크립터 찾아서 닫아준다.
-
-    // for(int i=0;i<DESC_ENTRY_NUM;i++){
-    //     DescEntry descentry=pFileDescTable->pEntry[i];
-    //     if(descentry.bUsed==1){
-    //         for(int t=0;t<MAX_FILE_NUM;t++){
-    //             File file=pFileTable->pFile[descentry.fileTableIndex];
-    //             if(file.inodeNum==file)
-    //         }
-    //     }
-    // }
+    pFileDescTable->pEntry[fileDesc].bUsed=0;
+    pFileDescTable->numUsedDescEntry-=1;
+    int idx=pFileDescTable->pEntry[fileDesc].fileTableIndex;
+    // 파일테이블의 file도 변경해줘야함
+    pFileTable->numUsedFile-=1;
+    pFileTable->pFile[idx].bUsed=0;
+    return 1;
 }
 
 int RemoveFile(char* name)
