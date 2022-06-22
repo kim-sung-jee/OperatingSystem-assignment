@@ -6,7 +6,7 @@
 #include "hw2.h"
 
 FileDescTable* pFileDescTable;
-// FileSysInfo* pFileSysInfo;
+//FileSysInfo* pFileSysInfo;
 FileTable* pFileTable;
 
 int OpenFile(const char* name, OpenFlag flag)
@@ -103,11 +103,15 @@ int OpenFile(const char* name, OpenFlag flag)
             for(int t=0;t<8;t++){
                 memcpy(drn3[t],block+t*sizeof(DirEntry),sizeof(DirEntry));
             }
+            int flag=0;
             for(int t=0;t<8;t++){
                 if(strcmp(drn3[t]->name,filename)==0){
-                    return drn3[t]->inodeNum;
+                    flag=1;
+                    break;
                 }
-
+                if(flag==1){
+                    break;
+                }
 
                 if(strcmp(drn3[t]->name,"")==0){
                     
@@ -140,38 +144,19 @@ int OpenFile(const char* name, OpenFlag flag)
                     DevReadBlock(0,newBlock);
 
                     // file descriptor table 과 file object 설정하기
-                    pFileDescTable;
-                    pFileTable;
-                    if(pFileDescTable==NULL){
-                        printf("null입니다 !!!!!!!!\n");
-                        pFileDescTable=malloc(sizeof(FileDescTable));
-                    }
-
-
-
-                    return drn3[t]->inodeNum;
-
-
-                
+                    return 1;       
                 }
             }
+            
+
+
+
+
         }
-        // // 인다이렉트 안해도 되네?...
-        // int iPtr=inode->indirectBlockPtr;
-        // // 새 블럭 할당해주기
-        // if(iPtr==0){
-        //     char*indirectBlock=malloc(512);
-        //     memset(indirectBlock,0,512);
-        //     int freeBlockNum=GetFreeBlockNum();
-        //     SetBlockBytemap(freeBlockNum);
-        //     int freeBlockNum2=GetFreeBlockNum();
-        //     DirEntry*drt[8];
-        //     for(int i=0;i<8;i++){
-        //         drt[i]=malloc(sizeof(DirEntry));
-        //     }
+        
+        //파일디스크립터 관련처리하기
 
-        // }
-
+        
 
         
     //APPEND
@@ -183,20 +168,129 @@ int OpenFile(const char* name, OpenFlag flag)
 }
 
 
+// desc 와 filetable은 1대1 매칭 되는거같음
 int WriteFile(int fileDesc, char* pBuffer, int length)
-{
+{   
+    // 데이터 쓸꺼니깐 블록 할당해주고
+    // 파일 디스크립터 찾아서 inode 일단 획득하기
+    DescEntry dentry=pFileDescTable->pEntry[fileDesc];
+    int fileTableIndex=dentry.fileTableIndex;
+    int inodeno=pFileTable->pFile[fileTableIndex].inodeNum;
+    // 해당파일객체
+    File file=pFileTable->pFile[fileTableIndex];
+    // inode 설정하기
+    Inode*inode=malloc(sizeof(Inode));
+    GetInode(inodeno,inode);
+    //direct 부터 4개밖ㅇ ㅔ못쓴다.
+    for(int i=0;i<4;i++){
+        int ptr=inode->dirBlockPtr[i];
+        // 파일 데이터를 위한 블록 생성하기
+        if(ptr==0){
+            int freeBlockNum=GetFreeBlockNum();
+            SetBlockBytemap(freeBlockNum);
+            inode->dirBlockPtr[i]=freeBlockNum;
+            ptr=freeBlockNum;
+        }
+        // ptr에 그냥 쓰면 된다.
+        char*block=malloc(512);
+        memset(block,0,512);
+        memcpy(block,pBuffer,512);
+        DevWriteBlock(ptr,block);
+        free(block);
+        file.bUsed=1;
+        file.fileOffset+=length;
+        pFileTable->pFile[fileTableIndex]=file;
+        // fsi 업데이트하기!!!!!!!!!!!!
+        return 1;
+    }
+    //다음 indirect
+    // 6개 할거임
+    int iPtr=inode->indirectBlockPtr;
+    if(iPtr==0){
+        int freeBlockno=GetFreeBlockNum();
+        SetBlockBytemap(freeBlockno);
+        char*block=malloc(512);
+        memcpy(block,&freeBlockno,4);
+        DevWriteBlock(freeBlockno,block);
+        iPtr=freeBlockno;
+        free(block);
+    }
+    for(int i=0;i<128;i++){
+        char*block=malloc(512);
+        DevReadBlock(iPtr,block);
+        int nptr;
+        memcpy(&nptr,block+i*sizeof(int),4);
+        if(nptr==0){
+            char*block2=malloc(512);
+            memcpy(block2,pBuffer,length);
+            int freeBlockno=GetFreeBlockNum();
+            DevWriteBlock(freeBlockno,block2);
+            SetBlockBytemap(freeBlockno);
+            memcpy(block+i*sizeof(int),&freeBlockno,4);
+            DevWriteBlock(iPtr,block);
+            // fsi 업데이트하기!!!!!!!!!!!!
+            return 1;
+        }else{
+            continue;
+        }
+        
+    }
 
+    // fsi 업데이트하기!!!!!!!!!!!!
 }
 
 
 int ReadFile(int fileDesc, char* pBuffer, int length)
-{
+{   
+    // fd 에서 파일 object 획득하기
+    DescEntry dentry=pFileDescTable->pEntry[fileDesc];
+    int fileTableIndex=dentry.fileTableIndex;
+    int inodeno=pFileTable->pFile[fileTableIndex].inodeNum;
+    File file=pFileTable->pFile[fileTableIndex];
+    int fileOffset=file.fileOffset;
+    // 파일 오프셋에서 시작해서 읽어야함
+    // 시작은 0부터임
+    int i=fileOffset/512;
+    Inode*inode=malloc(sizeof(Inode));
+    GetInode(inodeno,inode);
+    if(0<=i&&i<=3){
+        int ptr=inode->dirBlockPtr[0];
+        char*block=malloc(512);
+        DevReadBlock(ptr,block);
+        memcpy(pBuffer,block,length);
+        file.fileOffset+=512;
+        pFileTable->pFile[fileTableIndex]=file;
+        return 1;
+    }
+    // indirect에서 읽기
+    int ptr=inode->indirectBlockPtr;
+    char*block=malloc(512);
+    DevReadBlock(ptr,block);
+    int nptr;
+    memcpy(&nptr,block+(i-4)*4,sizeof(int));
+    char*block2=malloc(512);
+    DevReadBlock(nptr,block2);
+    memcpy(pBuffer,block2,length);
+    file.fileOffset+=512;
+    pFileTable->pFile[fileTableIndex]=file;
+    return 1;
+    
 
 }
 
 int CloseFile(int fileDesc)
 {
+    // 해당 파일 디스크립터 찾아서 닫아준다.
 
+    // for(int i=0;i<DESC_ENTRY_NUM;i++){
+    //     DescEntry descentry=pFileDescTable->pEntry[i];
+    //     if(descentry.bUsed==1){
+    //         for(int t=0;t<MAX_FILE_NUM;t++){
+    //             File file=pFileTable->pFile[descentry.fileTableIndex];
+    //             if(file.inodeNum==file)
+    //         }
+    //     }
+    // }
 }
 
 int RemoveFile(char* name)
@@ -946,7 +1040,7 @@ int RemoveDirectory(char* name)
 void CreateFileSystem(void)
 {   
     //시작!
-    
+    FileSysInit();
     //FileSySInfo를 설정하자
     // 루트 디렉토리부터 생성하자.
 
