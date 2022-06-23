@@ -66,10 +66,10 @@ int OpenFile(const char* name, OpenFlag flag)
 {   
 
     //TRUNCATE
-    if(flag==0){
-
-    //CREATE
-    }else if(flag==1){
+    
+        
+    //CREATE or TRUNCATE
+    if(flag==1||flag==0){
         // 길이 가져오기
         int s=strlen(name);
         
@@ -157,9 +157,37 @@ int OpenFile(const char* name, OpenFlag flag)
             for(int t=0;t<8;t++){
                 memcpy(drn3[t],block+t*sizeof(DirEntry),sizeof(DirEntry));
             }
-            int flag=0;
+        
             for(int t=0;t<8;t++){
                 if(strcmp(drn3[t]->name,filename)==0){
+                    // 쓴 블럭도 지우기
+                    if(flag==0){
+                        int freeinodenum=drn3[t]->inodeNum;
+                        //printf("%s %d 하하하ㅏ\n",drn3[t]->name,freeinodenum);
+                        Inode*pInode=malloc(sizeof(Inode));
+                        GetInode(freeinodenum,pInode);
+                        for(int j=0;j<4;j++){
+                            int ptr=pInode->dirBlockPtr[j];
+                            if(ptr==0){
+                                break;
+                            }
+                            ResetBlockBytemap(ptr);
+                        }
+                        pInode->allocBlocks=0;
+                        pInode->dirBlockPtr[0]=0;
+                        pInode->dirBlockPtr[1]=0;
+                        pInode->dirBlockPtr[2]=0;
+                        pInode->dirBlockPtr[3]=0;
+                        pInode->indirectBlockPtr=0;
+                        pInode->type=FILE_TYPE_FILE;
+                        pInode->size=0;
+                        //printf("%d 이거느 바꼇겟지?\n",pInode->dirBlockPtr[0]);
+                        PutInode(freeinodenum,pInode);
+                        
+                        free(pInode);
+                    }
+
+
                     // 파일 디스크립터 반환하기
                     //printf("%s , %d \n",drn3[t]->name,drn3[t]->inodeNum);
                     return setDescTable(drn3[t]->inodeNum);
@@ -181,9 +209,9 @@ int OpenFile(const char* name, OpenFlag flag)
                     free(nblock);
                     // inode 설정
                     Inode*pInode=malloc(sizeof(Inode));
-                    pInode->allocBlocks;
+                    pInode->allocBlocks=0;
                     pInode->dirBlockPtr;
-                    pInode->indirectBlockPtr;
+                    pInode->indirectBlockPtr=0;
                     pInode->type=FILE_TYPE_FILE;
                     pInode->size=0;
                     int freeInodeno=GetFreeInodeNum();
@@ -213,8 +241,6 @@ int OpenFile(const char* name, OpenFlag flag)
 
         
     //APPEND
-    }else{
-
     }
 
 
@@ -224,6 +250,12 @@ int OpenFile(const char* name, OpenFlag flag)
 // desc 와 filetable은 1대1 매칭 되는거같음
 int WriteFile(int fileDesc, char* pBuffer, int length)
 {   
+
+    
+
+
+
+
     // 데이터 쓸꺼니깐 블록 할당해주고
     // 파일 디스크립터 찾아서 inode 일단 획득하기
     DescEntry dentry=pFileDescTable->pEntry[fileDesc];
@@ -234,8 +266,80 @@ int WriteFile(int fileDesc, char* pBuffer, int length)
     // inode 설정하기
     Inode*inode=malloc(sizeof(Inode));
     GetInode(inodeno,inode);
+    //printf("%d inode 번호임니다\n",inodeno);
+    printf("--------\n");
+    if(length==BLOCK_SIZE*2){
+        for(int i=0;i<2;i++){
+            int ptr=inode->dirBlockPtr[i*2];
+            //printf("%d ptr 인데요???\n",ptr);
+            if(ptr==0){
+                int freeBlockNum=GetFreeBlockNum();
+                SetBlockBytemap(freeBlockNum);
+                int freeBlockNum2=GetFreeBlockNum();
+                SetBlockBytemap(freeBlockNum2);
+                inode->dirBlockPtr[i*2]=freeBlockNum;
+                inode->dirBlockPtr[i*2+1]=freeBlockNum2;
+                PutInode(inodeno,inode);
+                //printf("%d %d 임니다.\n",freeBlockNum,freeBlockNum2);
+                char*block=malloc(512);
+                char*block2=malloc(512);
+                memcpy(block,pBuffer,512);
+                memcpy(block2,pBuffer+512,512);
+                DevWriteBlock(freeBlockNum,block);
+                DevWriteBlock(freeBlockNum2,block2);
+                free(block);free(block2);
+                file.bUsed=1;
+                file.fileOffset+=length;
+                pFileTable->pFile[fileTableIndex]=file;
+                return 1;
+            }
+        }
+        // indirect
+        int iPtr=inode->indirectBlockPtr;
+        if(iPtr==0){
+            int freeBlockno=GetFreeBlockNum();
+            //printf("%d freeblockno 그리고 inodeno : %d\n",freeBlockno,inodeno);
+            SetBlockBytemap(freeBlockno);
+            char*b=malloc(512);
+            memset(b,0,512);
+            DevWriteBlock(iPtr,b);
+            free(b);
+            iPtr=freeBlockno;
+            inode->indirectBlockPtr=iPtr;
+            PutInode(inodeno,inode);
+        }
+        //printf("%d i ptr 임니다\n",iPtr);
+        char*block=malloc(512);
+        DevReadBlock(iPtr,block);
+        for(int i=0;i<64;i++){
+            int nptr1,nptr2;
+            memcpy(&nptr1,block+(i*2)*4,sizeof(int));
+            memcpy(&nptr2,block+(i*2+1)*4,sizeof(int));
+            if(nptr1==0&&nptr2==0){
+                char*block2=malloc(512);
+                char*block3=malloc(512);
+                int free1=GetFreeBlockNum();
+                SetBlockBytemap(free1);
+                int free2=GetFreeBlockNum();
+                SetBlockBytemap(free2);
+                memcpy(block2,pBuffer,512);
+                memcpy(block3,pBuffer+512,512);
+                DevWriteBlock(free1,block2);
+                DevWriteBlock(free2,block3);
+                memcpy(block+(i*2)*4,&free1,4);
+                memcpy(block+(i*2+1)*4,&free2,4);
+                DevWriteBlock(iPtr,block);
+                return 1;
+            }
+        }
+
+    }
+
+
     //printf("어디가문젤까\n");
     //direct 부터 4개밖ㅇ ㅔ못쓴다.
+
+
     for(int i=0;i<4;i++){
         int ptr=inode->dirBlockPtr[i];
         // 파일 데이터를 위한 블록 생성하기
@@ -257,7 +361,7 @@ int WriteFile(int fileDesc, char* pBuffer, int length)
             file.fileOffset+=length;
             pFileTable->pFile[fileTableIndex]=file;
             // fsi 업데이트하기!!!!!!!!!!!!
-            
+            // inode 업데이트하기
             return 1;
         }
         // ptr에 그냥 쓰면 된다.
@@ -282,10 +386,11 @@ int WriteFile(int fileDesc, char* pBuffer, int length)
         
     }
  //   printf("%d i ptr 입니다 \n",iPtr);
-    for(int i=0;i<128;i++){
         char*block=malloc(512);
         memset(block,0,512);
         DevReadBlock(iPtr,block);
+    for(int i=0;i<128;i++){
+        
         int nptr;
         
         memcpy(&nptr,block+i*sizeof(int),4);
@@ -309,6 +414,7 @@ int WriteFile(int fileDesc, char* pBuffer, int length)
             //printf("a 입니다 %d iptr입니다 %d freeblockno %d\n",a,iPtr,freeBlockno);
             //printf("nptr 입니다 : %d\n",freeBlockno);
             // fsi 업데이트하기!!!!!!!!!!!!
+            // inode 업데이트하기
             free(block);
             free(block2);
             return 1;
@@ -331,11 +437,52 @@ int ReadFile(int fileDesc, char* pBuffer, int length)
     File file=pFileTable->pFile[fileTableIndex];
     int inodeno=file.inodeNum;
     int fileOffset=file.fileOffset;
+
+
+
+
     // 파일 오프셋에서 시작해서 읽어야함;
     // 시작은 0부터임
     int i=fileOffset/512;
+    // 2블럭씩 읽으니깐...
     Inode*inode=malloc(sizeof(Inode));
     GetInode(inodeno,inode);
+    if(length==BLOCK_SIZE*2){
+        if(0<=i&&i<=2){
+            //printf("%d i 임\n",i);
+            int ptr=inode->dirBlockPtr[i];
+            int ptr2=inode->dirBlockPtr[i+1];
+            //printf("%d %d ptr 임\n",ptr,ptr2);
+            char*block1=malloc(512);
+            char*block2=malloc(512);
+            DevReadBlock(ptr,block1);
+            DevReadBlock(ptr2,block2);
+            memcpy(pBuffer,block1,512);
+            memcpy(pBuffer+512,block2,512);
+            pFileTable->pFile[fileTableIndex].fileOffset+=1024;
+            return 1;
+        }
+
+        int ptr3=inode->indirectBlockPtr;
+        //printf("%d ptr3 임니다\n",ptr3);
+        char*block3=malloc(512);
+        DevReadBlock(ptr3,block3);
+        char*block1=malloc(512);
+        char*block2=malloc(512);
+        int ptr1,ptr2;
+        memcpy(&ptr1,block3+(i-4)*4,sizeof(int));
+        memcpy(&ptr2,block3+(i-3)*4,sizeof(int));
+        //printf("ptr1 과 ptr2 는 %d %d \n",ptr1,ptr2);
+        DevReadBlock(ptr1,block1);
+        DevReadBlock(ptr2,block2);
+        memcpy(pBuffer,block1,512);
+        memcpy(pBuffer+512,block2,512);
+        pFileTable->pFile[fileTableIndex].fileOffset+=1024;
+        //printf("%s 입니다!!!\n",pBuffer);
+        return 1;
+
+    }
+
     if(0<=i&&i<=3){
        
         int ptr=inode->dirBlockPtr[i];
@@ -387,7 +534,66 @@ int CloseFile(int fileDesc)
 
 int RemoveFile(char* name)
 {
+    // 길이 가져오기
+    int s=strlen(name);
+    
+    // name 담김
+    char str[100];
+    // 이름들
+    char*names[100];int i=0;
+    memcpy(str,name,100);
+    char * nameptr=strtok(str,"/");
+    while(nameptr!=NULL){
+        names[i]=nameptr;
+        i++;
+        nameptr=strtok(NULL,"/");
+    }
 
+    
+    char s2[100]="";
+    for(int t=0;t<i-1;t++){
+        char s1[100]="/";
+        strcat(s1,names[t]);
+        strcat(s2,s1);
+    }
+    //
+    Directory * a=OpenDirectory(s2);
+    // 생성할  파일 이름
+    char filename[100];
+    strcpy(filename,names[i-1]);
+    printf("%s\n",filename);
+    Inode*inode=malloc(sizeof(Inode));
+    int inodeNum=a->inodeNum;
+        
+    GetInode(inodeNum,inode);
+
+    // direct 에서 찾기
+    for(int i=0;i<4;i++){
+        int ptr=inode->dirBlockPtr[i];
+        char*block=malloc(512);
+        DevReadBlock(ptr,block);
+        DirEntry* drn[8];
+        for(int t=0;t<8;t++){
+            drn[t]=malloc(sizeof(DirEntry));
+        }
+        for(int t=0;t<8;t++){
+            memcpy(drn[t],block+sizeof(DirEntry)*t,sizeof(DirEntry));
+        }
+        for(int t=0;t<8;t++){
+            if(strcmp(drn[t]->name,filename)==0){
+                strcpy(drn[t]->name,"");
+                drn[t]->inodeNum=0;
+                for(int j=0;j<8;j++){
+                    memcpy(block+sizeof(DirEntry)*j,drn[j],sizeof(DirEntry));
+                }
+                DevWriteBlock(ptr,block);
+                return 1;
+            }
+        }
+    }
+
+
+    return 0;
 }
 
 
