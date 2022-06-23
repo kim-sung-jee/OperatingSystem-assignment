@@ -161,6 +161,7 @@ int OpenFile(const char* name, OpenFlag flag)
             for(int t=0;t<8;t++){
                 if(strcmp(drn3[t]->name,filename)==0){
                     // 파일 디스크립터 반환하기
+                    //printf("%s , %d \n",drn3[t]->name,drn3[t]->inodeNum);
                     return setDescTable(drn3[t]->inodeNum);
                 }
                 
@@ -239,49 +240,77 @@ int WriteFile(int fileDesc, char* pBuffer, int length)
         int ptr=inode->dirBlockPtr[i];
         // 파일 데이터를 위한 블록 생성하기
         if(ptr==0){
+            
             int freeBlockNum=GetFreeBlockNum();
             SetBlockBytemap(freeBlockNum);
             inode->dirBlockPtr[i]=freeBlockNum;
+            PutInode(inodeno,inode);
             ptr=freeBlockNum;
+            char*block=malloc(512);
+            memset(block,0,512);
+            memcpy(block,pBuffer,512);
+            
+            DevWriteBlock(ptr,block);
+            //printf("%d ptr %d inode번호 입니다 \n",ptr,inodeno);
+            free(block);
+            file.bUsed=1;
+            file.fileOffset+=length;
+            pFileTable->pFile[fileTableIndex]=file;
+            // fsi 업데이트하기!!!!!!!!!!!!
+            
+            return 1;
         }
         // ptr에 그냥 쓰면 된다.
-        char*block=malloc(512);
-        memset(block,0,512);
-        memcpy(block,pBuffer,512);
-        DevWriteBlock(ptr,block);
-        free(block);
-        file.bUsed=1;
-        file.fileOffset+=length;
-        pFileTable->pFile[fileTableIndex]=file;
-        // fsi 업데이트하기!!!!!!!!!!!!
-        return 1;
+        
     }
+    //printf("입니당 : %s\n",pBuffer);
     //다음 indirect
     // 6개 할거임
     int iPtr=inode->indirectBlockPtr;
     if(iPtr==0){
+        
         int freeBlockno=GetFreeBlockNum();
+        //printf("%d freeblockno 그리고 inodeno : %d\n",freeBlockno,inodeno);
         SetBlockBytemap(freeBlockno);
-        char*block=malloc(512);
-        memcpy(block,&freeBlockno,4);
-        DevWriteBlock(freeBlockno,block);
+        char*b=malloc(512);
+        memset(b,0,512);
+        DevWriteBlock(iPtr,b);
+        free(b);
         iPtr=freeBlockno;
-        free(block);
+        inode->indirectBlockPtr=iPtr;
+        PutInode(inodeno,inode);
+        
     }
+ //   printf("%d i ptr 입니다 \n",iPtr);
     for(int i=0;i<128;i++){
         char*block=malloc(512);
+        memset(block,0,512);
         DevReadBlock(iPtr,block);
         int nptr;
+        
         memcpy(&nptr,block+i*sizeof(int),4);
-        if(nptr==0){
+        //printf("i 가 증가한드: %d nptr 은 ? %d\n",i,nptr);
+        if(nptr==0||nptr==46){
+            if(nptr==46){
+                nptr=0;
+            }
             char*block2=malloc(512);
             memcpy(block2,pBuffer,length);
             int freeBlockno=GetFreeBlockNum();
             DevWriteBlock(freeBlockno,block2);
             SetBlockBytemap(freeBlockno);
+
             memcpy(block+i*sizeof(int),&freeBlockno,4);
             DevWriteBlock(iPtr,block);
+            int a;
+            char*blcok=malloc(512);
+            DevReadBlock(iPtr,blcok);
+            memcpy(&a,blcok+i*sizeof(int),sizeof(int));
+            //printf("a 입니다 %d iptr입니다 %d freeblockno %d\n",a,iPtr,freeBlockno);
+            //printf("nptr 입니다 : %d\n",freeBlockno);
             // fsi 업데이트하기!!!!!!!!!!!!
+            free(block);
+            free(block2);
             return 1;
         }else{
             continue;
@@ -298,31 +327,44 @@ int ReadFile(int fileDesc, char* pBuffer, int length)
     // fd 에서 파일 object 획득하기
     DescEntry dentry=pFileDescTable->pEntry[fileDesc];
     int fileTableIndex=dentry.fileTableIndex;
-    int inodeno=pFileTable->pFile[fileTableIndex].inodeNum;
+    
     File file=pFileTable->pFile[fileTableIndex];
+    int inodeno=file.inodeNum;
     int fileOffset=file.fileOffset;
-    // 파일 오프셋에서 시작해서 읽어야함
+    // 파일 오프셋에서 시작해서 읽어야함;
     // 시작은 0부터임
     int i=fileOffset/512;
     Inode*inode=malloc(sizeof(Inode));
     GetInode(inodeno,inode);
     if(0<=i&&i<=3){
-        int ptr=inode->dirBlockPtr[0];
+       
+        int ptr=inode->dirBlockPtr[i];
+        
         char*block=malloc(512);
+        //printf("%d ptr 입니다\n",ptr);
         DevReadBlock(ptr,block);
+        //printf("%s 입니다 \n",block);
         memcpy(pBuffer,block,length);
         file.fileOffset+=512;
-        pFileTable->pFile[fileTableIndex]=file;
+        
+        pFileTable->pFile[fileTableIndex].fileOffset+=512;
+        
         return 1;
     }
+    
     // indirect에서 읽기
     int ptr=inode->indirectBlockPtr;
     char*block=malloc(512);
+    memset(block,0,512);
+    //printf("%d 인다이렉트블럭번호 \n",ptr);
     DevReadBlock(ptr,block);
-    int nptr;
-    memcpy(&nptr,block+(i-4)*4,sizeof(int));
+    //printf("%d inode 입니다!!!\n",inodeno);
+    int nptr=*(block+(i-4)*4);
+    //memcpy(&nptr,block+(i-4)*sizeof(int),sizeof(int));
+    //printf("%d nptr 입니다\n",nptr);
     char*block2=malloc(512);
     DevReadBlock(nptr,block2);
+    //printf("%s 입니다\n",block2);
     memcpy(pBuffer,block2,length);
     file.fileOffset+=512;
     pFileTable->pFile[fileTableIndex]=file;
